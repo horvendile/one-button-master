@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>The Button</title>
+  <meta name="ethereum-dapp-url-bar-style" content="transparent">
+  <link rel="shortcut icon" href="icon.png" type="image/vnd.microsoft.icon">
+  <script src="web3.min.js"></script>
+  <script>
+  //*******************//
+  //      SCRIPTS      //
+  //*******************//
+
+  // INITIAL SETUP
+  var mainAccount, theButton, lastPressed, yourScore, contractAddress, web3;
+  var contractABI = [{"constant":true,"inputs":[],"name":"lastPressed","outputs":[{"name":"","type":"uint256","value":"1499870209"}],"payable":false,"type":"function"},{"constant":false,"inputs":[],"name":"press","outputs":[],"payable":false,"type":"function"},{"inputs":[],"payable":false,"type":"constructor"},{"anonymous":false,"inputs":[{"indexed":false,"name":"presser","type":"address"},{"indexed":false,"name":"pressTime","type":"uint256"},{"indexed":false,"name":"score","type":"uint256"}],"name":"ButtonPress","type":"event"}];
+
+  // FUNCTION IS EXECUTED ON PAGE LOAD
+  function init() {
+
+    // Checks Web3 support
+    if (typeof web3 !== 'undefined') {
+      // If there isn't then set a provider
+      web3 = new Web3(web3.currentProvider);
+    } else {
+      // use Infura if it's not there
+      web3 = new Web3(new Web3.providers.HttpProvider("https://mainnet.infura.io/xb1hnXsk67Yb6pIlVPvv"));
+      // Hide buttons if it's loading infura
+      document.getElementById("not-supported").style.display = "block";
+      document.getElementById('theButton').className = 'clicked';
+      document.getElementById('theButton').disabled = true;    
+      document.getElementById('theButton').textContent = 'Cannot press';
+
+    }
+
+    // Allow buttons to be clicked
+    document.getElementById('theButton').addEventListener('click', pressButton, false);
+    document.getElementById('try-again').addEventListener('click', tryAgain, false);
+
+    // Get user's ethereum account
+    web3.eth.getAccounts(function(e,accounts){ 
+        // show the floating baloon
+        if (e || !accounts || accounts.length == 0) {
+            document.getElementById("add-account").style.display = "block";
+        } else {
+          mainAccount = accounts[0];
+        }
+    });
+
+    // Try to load the contract on the mainnet
+    contractAddress = '0xffc2114eB9d604C0Eddbd6932678bf24dEf65606'; 
+    web3.eth.getCode(contractAddress, function(e, r) { 
+        if (!e && r.length > 3) {
+          setup(4010000);    
+        } else {
+          // If it fails, try a Rinkeby address
+          contractAddress = '0xb0B3F49ef8b6dE7Cddd374d5dab7689b5645F4D5'; 
+          web3.eth.getCode(contractAddress, function(e, r) { 
+              if (!e && r.length > 3) {
+                setup(520000);    
+              } else {
+                // If this one is not found either, then give up
+                document.getElementById("countup").textContent = "Unsupported test network";
+              }
+          }) 
+        }
+    }) 
+  }
+
+  // This is called when the contract is found
+  function setup(deployedAtBlock) {
+    // Load the contract
+    theButton = web3.eth.contract(contractABI).at(contractAddress); 
+
+    // This is how you watch for past and current events on the chain
+    var buttonPressEvent = theButton.ButtonPress({presser: mainAccount}, {fromBlock: deployedAtBlock});
+    
+    // Wait for the events to be loaded
+    buttonPressEvent.watch(function(error, result){
+        console.log('Button Press!', result.args.pressTime.toFixed(), result.args.presser, result.args.score.toFixed());
+        if (result.args.presser == mainAccount) {
+          yourScore = result.args.score.toFixed();
+          document.getElementById("nonpusher").style.display = "none";
+          document.getElementById("pusher").style.display = "block";
+          document.getElementById("score").textContent = yourScore;
+          document.body.style.backgroundColor = "hsl("+ (256 - yourScore) +", 50%, 50%)";
+
+        }
+    });
+
+    // This is how you execute an action at every new block
+    web3.eth.filter('latest').watch(function(e, res){
+        if(!e) {
+          // This is how you read from a smart contract
+          theButton.lastPressed(function(error, result) {
+            lastPressed = result.toFixed();
+          })
+        }
+    }); 
+
+    // Animate the score going up
+    setInterval(function(){
+      if (lastPressed && !yourScore) {
+        var score = Math.floor((Date.now() - lastPressed * 1000)/1000) % 256;
+        document.getElementById("countup").textContent = score;
+        document.body.style.backgroundColor = "hsl("+ (256 - score) +", 70%, 50%)";
+      }
+    }, 1000)
+  }
+
+  // Actions when you press the button
+  function pressButton() {
+    document.getElementById('theButton').className = 'clicked';
+    document.getElementById('theButton').textContent = 'pressing...';
+
+    // This is how you execute an action on a contract
+    theButton.press({from: mainAccount}, function(error, result) {
+      console.log('button pressed', error, result);
+      document.getElementById('theButton').className = '';
+      document.getElementById('theButton').textContent = 'Press Button';
+    })
+  }
+
+  // Allows the user to try again with another score
+  function tryAgain() {
+    document.getElementById("nonpusher").style.display = "block";  
+    document.getElementById("pusher").style.display = "none"; 
+    yourScore = 0;
+  }
+
+  </script>
+  <style>
+      /*******************/
+      /*      STYLES     */
+      /*******************/
+
+      #pusher, #add-acount, #not-supported {
+        display: none;
+      }
+
+      body {
+          background: hsl(0, 0%, 50%);
+          font-family: 'Source Sans Pro', Helvetica, Arial, sans-serif;
+          background-size: 100%;
+          color: #fefefe;
+          transition: background 1s;
+      }
+
+      .content {
+          text-align: center;
+          max-width: 600px;
+          margin: 90px auto;
+          padding: 32px;
+      }
+
+      #add-account {
+          display: none;
+          background: #333;
+          color: #FFF;
+          position: fixed;
+          top: 90px;
+          right: 32px;
+          padding: 20px 30px;
+          box-shadow: rgba(0,0,0,0.2) 0 2px 8px;    
+      }
+
+      #add-account:before {
+          display: block;
+          background: #333;
+          transform: rotate(45deg);
+          top: -9px;
+          width: 20px;
+          height: 20px;
+          content: " ";
+          position: absolute;
+          left: 250px;
+      }
+
+      button {
+        width: 200px;
+        height: 50px;
+        background: #333;
+        color: #fefefe;
+        font-size: 20px;
+        font-weight: 800;
+        border: none;
+        margin: 20px auto;
+        border-radius: 3px;
+        border-top: 0 #000 solid;
+        border-bottom: 4px #000 solid;
+        text-transform: uppercase;
+        transition: border 0.8s, margin 0.8s;
+        outline: none; 
+      }
+
+      button.clicked {
+        margin: 24px auto 20px;
+        border-bottom: 0 #000 solid;
+        border-top: 2px #000 solid;
+        transition: border 0.2s, margin 0.2s;        
+      }
+
+      h1 {
+        font-size: 1000%;
+      }
+
+      h1, h2 {
+        margin: 0 auto;
+      }
+
+  </style>
+  </head>
+  <body>
+
+  <div id="nonpusher" class="content">
+    <h2>Current score</h2>
+    <h1 id="countup">loading...</h1>
+
+    <button id="theButton">PUSH BUTTON</button>
+
+    <div id="not-supported" class="content not-supported">
+      <h2>This Browser does not support Ethereum apps. </h2> 
+      <a href="http://ethereum.org">Download Mist</a>
+    </div>
+  </div>
+
+  <div id="pusher" class="content">
+    <h2>You pressed at</h2>
+    <h1 id="score">loading...</h1>
+    <a id="try-again">Try again</a>
+  </div>
+
+  <div id="add-account">
+    Click here to add an account on Mist
+  </div>
+
+
+  <script type="text/javascript">
+   function autorun(){
+      init();
+   }
+   if (document.addEventListener) document.addEventListener("DOMContentLoaded", autorun, false);
+   else if (document.attachEvent) document.attachEvent("onreadystatechange", autorun);
+   else window.onload = autorun;
+  </script>
+  </body>
+</html>
